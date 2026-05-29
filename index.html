@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Examen 4 - Detección de Outliers</title>
+<!-- CONFIGURACIÓN DE MATHJAX PARA RENDERIZAR LATEX -->
+<script>
+      MathJax = {
+        tex: {
+          inlineMath: [['$', '$']],
+          displayMath: [['$$', '$$']]
+        }
+      };
+    </script>
+<script async="" id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+<style>
+        /* Configuración base y estilo */
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #0F172A; 
+            color: #334155;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 0;
+        }
+        .slide {
+            background-color: #FFFFFF;
+            width: 1120px;
+            height: 630px;
+            margin-bottom: 40px;
+            padding: 50px 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            position: relative;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+        .slide.title-slide {
+            background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+            color: #F8FAFC;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        .slide.title-slide h1 { font-size: 46px; font-weight: 700; color: #FFFFFF; margin-bottom: 15px; letter-spacing: -0.5px; line-height: 1.2; }
+        .slide.title-slide .subtitle { font-size: 22px; color: #38BDF8; margin-bottom: 50px; font-weight: 400; }
+        .slide.title-slide .meta-info { font-size: 16px; color: #94A3B8; border-top: 1px solid #334155; padding-top: 20px; width: 60%; }
+        
+        /* ELEMENTOS ESTRUCTURALES */
+        .slide-header { display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #CBD5E1; padding-bottom: 12px; margin-bottom: 25px; }
+        .slide-title { font-size: 28px; color: #1E293B; font-weight: 700; }
+        .slide-section-tag { font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; color: #0284C7; font-weight: 700; }
+        .slide-content { flex-grow: 1; display: flex; flex-direction: column; justify-content: flex-start; }
+        .columns-2 { display: flex; gap: 40px; height: 100%; }
+        .column { flex: 1; }
+        
+        /* TIPOGRAFÍA Y BLOQUES */
+        p { font-size: 20px; line-height: 1.6; margin-bottom: 14px; color: #334155; }
+        strong { color: #0F172A; }
+        ul { margin-left: 20px; margin-bottom: 15px; }
+        li { font-size: 20px; line-height: 1.5; margin-bottom: 8px; color: #475569; }
+        .callout-box { background-color: #F8FAFC; border-left: 4px solid #0284C7; padding: 15px 20px; margin-bottom: 15px; }
+        .callout-box.warning { border-left-color: #F59E0B; background-color: #FFFBEB; }
+        .callout-box.danger { border-left-color: #EF4444; background-color: #FFF5F5; }
+        .callout-box.success { border-left-color: #10B981; background-color: #ECFDF5; }
+        .callout-box h4 { font-size: 20px; color: #0F172A; margin-bottom: 6px; font-weight: 700; }
+        
+        /* CAJAS MATEMÁTICAS */
+        .math-block { background-color: #F1F5F9; padding: 12px; text-align: center; margin: 15px 0; border-radius: 4px; overflow-x: auto; }
+        
+        /* IMÁGENES */
+        .image-placeholder { background-color: #F8FAFC; border: 2px dashed #CBD5E1; border-radius: 6px; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 250px; color: #94A3B8; font-size: 14px; text-align: center; padding: 20px; }
+        
+        /* FOOTER */
+        .slide-footer { position: absolute; bottom: 20px; left: 60px; right: 60px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #E2E8F0; padding-top: 10px; font-size: 11px; color: #94A3B8; }
+        .slide-number { font-weight: 700; color: #64748B; }
+    </style>
+</head>
+<body>
+<!-- BLOQUE 1: FUNDAMENTOS Y TAXONOMÍA (Con LaTeX Corregido) -->
+<div class="slide title-slide" id="slide-1">
+<h1>Detección de Outliers I</h1>
+<div class="subtitle">Examen 4</div>
+<div class="meta-info">
+<p style="margin-bottom: 5px; color: #FFF;"> Dominguez Sánchez Gustavo Alonso</p>
+</div>
+</div>
+<div class="slide" id="slide-2">
+<div class="slide-header">
+<div class="slide-title">Introducción y el Límite de la Normalidad</div>
+<div class="slide-section-tag">1. Introducción</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<div class="callout-box">
+<h4>Diferenciación conceptual:</h4>
+<p style="font-size: 20px; margin-bottom: 0;">
+                            • <strong>Ruido:</strong> Interferencia estocástica o error de medida aleatorio. No es deseado.<br/>
+                            • <strong>Outlier:</strong> Observación con características inusuales al resto del conjunto. No es un error aleatorio.
+                        </p>
+</div>
+<p style="font-size: 20px; font-style: italic; color: #475569;">
+                        Definición de Hawkins: "Una observación que se desvía tanto de las demás como para despertar sospechas de que fue generada por un mecanismo diferente."
+                    </p>
+</div>
+<div class="column">
+<div class="callout-box danger">
+<h4>Limitaciones del Enfoque Supervisado:</h4>
+<ul style="margin-bottom: 0; padding-left: 5px;">
+<li style="font-size: 20px;"><strong>Desbalance extremo:</strong> $P(y=	normal) \gg P(y=anomalía)$.</li>
+<li style="font-size: 20px;"><strong>Delimitaciones difusas:</strong> La transición no es lineal; es una región continua de densidad variable.</li>
+<li style="font-size: 20px;"><strong>Anomalías inteligentes:</strong> Los autores de fraudes camuflan patrones para ocultarse en la distribución (<em>concept drift</em>).</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">2</div></div>
+</div>
+<div class="slide" id="slide-3">
+<div class="slide-header">
+<div class="slide-title">Tipos de Outliers I: Atípicos Globales o Puntuales</div>
+<div class="slide-section-tag">2. Tipos de Outliers</div>
+</div>
+<div class="slide-content">
+
+<div class="" style="">
+<p>Un dato individual se considera un <strong>outlier global</strong> si se desvía drásticamente con respecto al resto de los datos en su totalidad, de forma aislada y sin requerir contexto adicional.</p>
+<div class="callout-box">
+<h4>Formalización Matemática</h4>
+<p style="font-size: 20px;">Sea $D$ el conjunto de datos y un punto arbitrario $x_i \in D$. Es una anomalía puntual si satisface:</p>
+<div class="math-block">
+                            $$d(x_i, \mu_D) &gt; \tau \quad \quad P(x_i) &lt; \epsilon$$
+                        </div>
+<p style="font-size: 20px; color: #64748B; margin-bottom: 0;">
+                            Donde $\mu_D$ es el centro de masa/centroide, $	au$ es el umbral espacial de desviación, y $\epsilon$ es el umbral de probabilidad infinitesimal.
+                        </p>
+</div>
+<p style="font-size: 20px;"><strong>Ejemplo:</strong> Transferencia aislada de $\$500,000$ MXN en cuenta de nómina promedio.</p></div>
+
+
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">3</div></div>
+</div>
+<div class="slide" id="slide-4">
+<div class="slide-header">
+<div class="slide-title">Tipos de Outliers II: Atípicos Contextuales</div>
+<div class="slide-section-tag">2. Tipos de Outliers</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p>Una observación es anómala <strong>exclusivamente bajo un contexto específico</strong>. El espacio de atributos $Y$ se particiona rígidamente ($Y = B \cup C$, $B \cap C = \emptyset$):</p>
+<ul>
+<li><strong>Contextuales ($C$):</strong> Entorno de la observación (ej. temporal/espacial).</li>
+<li><strong>Comportamiento ($B$):</strong> Características evaluadas (ej. monto).</li>
+</ul>
+<div class="callout-box">
+<h4>Formalización Matemática</h4>
+<p style="font-size: 14px;">La condición depende de la <strong>probabilidad condicional</strong> del comportamiento dado el contexto:</p>
+<div class="math-block">
+                            $$P(x_{Bi} \mid x_{Ci}) &lt; \epsilon$$
+                        </div>
+</div>
+</div>
+<div class="column" style="display: flex; flex-direction: column;">
+<div class="callout-box" style="margin-bottom: 15px;">
+<h4>Ejemplo Práctico:</h4>
+<p style="font-size: 14px; margin-bottom: 0;">Cargo de tarjeta por $\$5,000$ MXN ($x_{Bi}$) tiene alta probabilidad marginal. Si ocurre a las 3:00 a.m. en el extranjero ($x_{Ci}$), la probabilidad condicional colapsa.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">4</div></div>
+</div>
+<div class="slide" id="slide-5">
+<div class="slide-header">
+<div class="slide-title">Tipos de Outliers III: Atípicos Colectivos</div>
+<div class="slide-section-tag">2. Tipos de Outliers</div>
+</div>
+<div class="slide-content">
+
+<div class="" style="">
+<p>Las instancias individuales que conforman la anomalía <strong>no son atípicas por sí mismas</strong> evaluadas aisladamente. Lo que constituye la anomalía es su <strong>aparición conjunta</strong> o secuencia.</p>
+<div class="callout-box">
+<h4>Formalización Matemática</h4>
+<p style="font-size: 20px;">Sea un subconjunto $S \subset D$. Mientras para cada $x_i \in S$ la probabilidad es normal, el grupo viola la independencia estocástica:</p>
+<div class="math-block">
+                            $$P(S) &lt; \epsilon \quad 	; \quad P(S) 
+eq \prod_{x_i \in S} P(x_i)$$
+                        </div>
+</div>
+<p style="font-size: 20px;"><strong>Ejemplo:</strong> Un rechazo de paquete de red es normal. Un subconjunto de 10,000 rechazos concurrentes es un Ataque de Denegación de Servicio (DDoS).</p></div>
+
+
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">5</div></div>
+</div>
+<!-- ========================================== -->
+<!-- BLOQUE 2: ENFOQUES Y ALGORITMOS           -->
+<!-- ========================================== -->
+<div class="slide" id="slide-6">
+<div class="slide-header">
+<div class="slide-title">Enfoques para la Detección: Estadísticos vs Proximidad</div>
+<div class="slide-section-tag">3. Enfoques para la Detección</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p><strong>Métodos Estadísticos:</strong> Asumen que los datos siguen una distribución de probabilidad teórica. Limitación: En la realidad multidimensional, los datos rara vez encajan perfectamente en distribuciones perfectas.</p>
+<p><strong>Métodos Basados en Proximidad:</strong> Geométricos y no paramétricos. Un dato es atípico si la cercanía a sus vecinos es significativamente menor que la del resto.</p>
+<p style="font-size: 20px;"><strong>Distancia Euclidiana:</strong> Distancia en línea recta, altamente sensible a extremos.</p>
+<div class="math-block" style="font-size: 20px; padding: 5px;">$$d(a,b) = \sqrt{ \sum_{i=1}^{p} (x_{ai}-x_{bi})^2 }$$</div>
+</div>
+<div class="column">
+<div class="callout-box" style="border-left-color: #64748B;">
+<p style="font-size: 20px;"><strong>Distancia de Manhattan:</strong> Suma de diferencias absolutas (robusta).</p>
+<div class="math-block" style="font-size: 20px; padding: 5px;">$$d(a,b) = \sum_{i=1}^{p} |x_{ai} - x_{bi}|$$</div>
+<p style="font-size: 20px; margin-top: 5px;"><strong>Gower:</strong> Para datasets mixtos (numéricos y categóricos), devuelve rango $[0,1]$.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">6</div></div>
+</div>
+<div class="slide" id="slide-7">
+<div class="slide-header">
+<div class="slide-title">Detección Basada en Clustering y K-Means</div>
+<div class="slide-section-tag">3. Enfoques / 4. Algoritmos Clásicos</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p>Adoptan una visión estructural del dataset bajo un supuesto claro:</p>
+<div class="callout-box success">
+<p style="font-size: 20px; font-style: italic; margin-bottom: 0; color: #065F46;">
+                            "Los datos normales pertenecen a clústeres grandes y densos, en tanto que los outliers pertenecen a clústeres pequeños, dispersos, o no pertenecen a ninguno."
+                        </p>
+</div>
+<p style="font-size: 20px;"><strong>Mecánica de K-Means:</strong> Un objeto $x$ se clasifica como anómalo si la distancia euclidiana a su centroide asignado $\mu_i$ excede un umbral predefinido.</p>
+</div>
+<div class="column">
+<div class="callout-box">
+<h4>Suma de Errores Cuadrados (SSE / E)</h4>
+<div class="math-block" style="font-size: 18px;">
+                            $$E = \sum_{i=1}^{k} \sum_{x \in C_i} \|x - \mu_i\|^2$$
+                        </div>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">7</div></div>
+</div>
+<div class="slide" id="slide-8">
+<div class="slide-header">
+<div class="slide-title">Limitaciones Estructurales de K-Means</div>
+<div class="slide-section-tag">4. Algoritmos Clásicos</div>
+</div>
+<div class="slide-content">
+<div>
+<p>Analizando la función $E$, notamos que la <strong>penalización es cuadrática</strong>. Un outlier extremo representará una porción masiva del error total.</p>
+<p>Dado que K-Means busca minimizar este error, el algoritmo compensará desplazando agresivamente el centroide hacia el outlier.</p>
+<div class="callout-box danger">
+<h4>Consecuencias de la Deformación:</h4>
+<ul style="margin-bottom:0;">
+<li><strong>Falsos Negativos:</strong> El outlier acorta su propia distancia a $\mu_i$, camuflándose a sí mismo y a otros.</li>
+<li><strong>Falsos Positivos:</strong> Al alejarse del centro de masa real, los datos legítimos del extremo opuesto reportan distancias artificialmente altas.</li>
+</ul>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">8</div></div>
+</div>
+<div class="slide" id="slide-9">
+<div class="slide-header">
+<div class="slide-title">La Alternativa Robusta: K-Medoides (PAM)</div>
+<div class="slide-section-tag">4. Algoritmos Clásicos</div>
+</div>
+<div class="slide-content">
+<div>
+<p>Para mitigar la sensibilidad extrema a valores atípicos, <strong>Partitioning Around Medoids (PAM)</strong> sustituye la media aritmética por un <em>medoide</em>.</p>
+<p>Un medoide es un <strong>punto de datos real</strong> del conjunto, seleccionado para minimizar la suma de distancias absolutas (no cuadráticas).</p>
+<div class="callout-box success">
+<h4>Ventaja Estructural:</h4>
+<p style="font-size: 14px; margin-bottom: 0;">
+                            Al basarse en la Distancia de Manhattan y evitar el promedio ponderado, el centro de gravedad del clúster se ancla sólidamente en la densidad real. Los outliers globales permanecen verdaderamente aislados.
+                        </p>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">9</div></div>
+</div>
+<div class="slide" id="slide-10">
+<div class="slide-header">
+<div class="slide-title">Algoritmos Jerárquicos y Dendrogramas</div>
+<div class="slide-section-tag">4. Algoritmos Clásicos</div>
+</div>
+<div class="slide-content">
+<div>
+<p>Algoritmos aglomerativos (ej. AGNES) evitan definir $k$ a priori. Las anomalías se revelan estructuralmente en el dendrograma mediante:</p>
+<ul style="font-size:14px;">
+<li><strong>Aislamiento Tardío:</strong> Fusión con la masa principal cerca de la raíz (Atípicos Globales).</li>
+<li><strong>Tamaño del Clúster:</strong> Micro-clústeres bajo cortes lógicos (Atípicos Colectivos).</li>
+</ul>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">10</div></div>
+</div>
+<div class="slide" id="slide-11">
+<div class="slide-header">
+<div class="slide-title">DBSCAN: Paradigma de Detección por Densidad</div>
+<div class="slide-section-tag">4. Algoritmos Clásicos</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p>Los métodos de particionamiento asumen formas esféricas y densidades homogéneas. <strong>DBSCAN</strong> rompe esto agrupando áreas continuas de alta densidad, manejando formas irregulares.</p>
+<p>Requiere dos hiperparámetros fundamentales:</p>
+<ul>
+<li>$\epsilon$ (Epsilon): Radio de vecindad.</li>
+<li>$MinPts$: Cantidad mínima de puntos requerida en $\epsilon$.</li>
+</ul>
+</div>
+<div class="column">
+<div class="callout-box success">
+<h4>Mecánica de Clasificación:</h4>
+<ul style="margin-bottom:0; font-size: 13px;">
+<li><strong>Centrales (Core):</strong> Núcleo del clúster ($\ge MinPts$).</li>
+<li><strong>Fronterizos (Border):</strong> Bordes del clúster ($&lt; MinPts$ pero alcanzables).</li>
+<li><strong>Ruido (Noise):</strong> Observaciones aisladas. Esta etiqueta captura directamente anomalías globales/contextuales.</li>
+</ul>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">11</div></div>
+</div>
+<!-- ========================================== -->
+<!-- BLOQUE 3: CASO DE APLICACIÓN PRINCIPAL     -->
+<!-- ========================================== -->
+<!-- DIAPOSITIVA 12: PLANTEAMIENTO DEL PROBLEMA (E-COMMERCE) -->
+<div class="slide" id="slide-12">
+<div class="slide-header">
+<div class="slide-title">Planteamiento del Problema en E-commerce</div>
+<div class="slide-section-tag">5. Caso de Aplicación</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p><strong>El Desafío del Negocio:</strong> Una plataforma minorista procesa miles de transacciones diarias expuesta a ataques cambiantes (<em>card testing, account takeover, fraudes masivos</em>).</p>
+<p>Modelar el fraude mediante aprendizaje supervisado falla porque los atacantes son <strong>inteligentes</strong> y mutan sus métodos constantemente para camuflarse dentro de la distribución.</p>
+<div class="callout-box success">
+<h4>Enfoque No Supervisado Adoptado:</h4>
+<p style="font-size: 13.5px; margin-bottom: 0; color: #065F46;">
+                            Se modela rigurosamente la estructura geométrica de una <strong>transacción legítima (Línea Base)</strong>. Cualquier desviación de este espacio denso será clasificada como anomalía.
+                        </p>
+</div>
+</div>
+<div class="column">
+<div class="callout-box">
+<h4>Espacio de Características (Variables):</h4>
+<ol style="margin-left: 20px; font-size: 14px; color: #475569;">
+<li style="margin-bottom: 6px;"><strong>Monto_Compra:</strong> Valor monetario de la transacción en pesos (\$ MXN). Variable de comportamiento.</li>
+<li style="margin-bottom: 6px;"><strong>Articulos_Carrito:</strong> Cantidad de ítems físicos dentro de la orden. Variable de comportamiento.</li>
+<li style="margin-bottom: 0;"><strong>Hora_Operacion:</strong> Hora del día del pago (0 a 24h). Funciona como nuestro <strong>atributo contextual</strong> básico.</li>
+</ol>
+</div>
+<p style="font-size: 14px;">
+<strong>La Normalidad Histórica Simulada:</strong><br/>
+                        • <em>Compradores casuales:</em> Compras pequeñas, pocos ítems, horario diurno (pico 2:00 PM).<br/>
+                        • <em>Clientes mayoristas (B2B):</em> Alto monto, gran volumen de artículos, horario rígido de oficina (pico 1:00 PM).
+                    </p>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">12</div></div>
+</div>
+<!-- DIAPOSITIVA 13: INYECIÓN DE TRÁFICO MALICIOSO -->
+<div class="slide" id="slide-13">
+<div class="slide-header">
+<div class="slide-title">Inyección de Tráfico Malicioso y Proyección 3D</div>
+<div class="slide-section-tag">5. Caso de Aplicación</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p>Para estresar los modelos, inyectamos vectores de fraude diseñados estrictamente sobre la taxonomía de Chandola:</p>
+<ul style="font-size: 13.5px;">
+<li><strong>Outliers Globales (Fraude Masivo):</strong> Montos y cantidad de artículos desproporcionados (ej. \$50K-\$65K con más de 85 artículos). Su aislamiento geométrico es evidente en todas las dimensiones.</li>
+<li><strong>Outliers Contextuales (Ataque Sofisticado):</strong> Imitan perfectamente el volumen y monto de un "Cliente Mayorista" legítimo (\$15K y 45 ítems), pero son ejecutados a las <strong>3:00 a.m.</strong> En el eje de comportamiento son normales; en el temporal, son anomalías.</li>
+</ul>
+</div>
+<div class="column">
+<li><strong>Outliers Colectivos (Card Testing / Bots):</strong> Ráfaga coordinada de 30 transacciones consecutivas de bajo impacto (\$100 MXN, 1 artículo) en una ventana de 5 minutos a las 4:15 a.m.</li>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">13</div></div>
+</div>
+<!-- DIAPOSITIVA 14: IMPLEMENTACIÓN Y ANÁLISIS DE RESULTADOS -->
+<div class="slide" id="slide-14">
+<div class="slide-header">
+<div class="slide-title">Implementación y Análisis de Resultados con DBSCAN</div>
+<div class="slide-section-tag">5. Caso de Aplicación</div>
+</div>
+<div class="slide-content">
+<div class="columns-2">
+<div class="column">
+<p style="font-size: 20px; margin-bottom: 10px;"><strong>Heurística basada en Densidad:</strong> Se aplica estandarización ($Z$-score) obligatoria. El modelo DBSCAN ($eps=0.7$, $min\_samples=10$) aísla el ruido (Puntuales/Contextuales en etiqueta `-1`) y detecta el fraude colectivo analizando micro-clústeres con masa $&lt; 5\%$.</p>
+<table class="matrix-table">
+<thead>
+<tr>
+<th>Etiqueta Real</th>
+<th>Pred. Atípico</th>
+<th>Pred. Normal</th>
+<th>Total</th>
+</tr>
+</thead>
+<tbody>
+<tr><td>Normal</td><td>21</td><td>979</td><td>1000</td></tr>
+<tr><td>Outlier Colectivo</td><td>30</td><td>0</td><td>30</td></tr>
+<tr><td>Outlier Contextual</td><td>4</td><td>0</td><td>4</td></tr>
+<tr><td>Outlier Global</td><td>3</td><td>0</td><td>3</td></tr>
+<tr class="highlight-tr"><td>Total</td><td>58</td><td>979</td><td>1037</td></tr>
+</tbody>
+</table>
+</div>
+<div class="column">
+<div class="callout-box success" style="margin-bottom: 12px; padding: 12px 15px;">
+<h4>Eficiencia de Intercepción (Recall: 100%)</h4>
+<p style="font-size: 20px; margin-bottom: 0; color: #065F46;">El modelo capturó los 37 eventos fraudulentos sin un solo Falso Negativo, validando la capacidad del algoritmo para romper vecindades espaciales mediante la densidad temporal.</p>
+</div>
+<div class="callout-box warning" style="padding: 12px 15px;">
+<h4>El Costo del Riesgo (Falsos Positivos: 2.1%)</h4>
+<p style="font-size: 20px; margin-bottom: 0; color: #78350F;">21 transacciones legítimas en los bordes exteriores de la densidad fueron marcadas como atípicas. En términos operativos, auditar manualmente estas 21 órdenes es un costo altamente aceptable para blindar el canal contra fraudes críticos.</p>
+</div>
+</div>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">14</div></div>
+</div>
+<!-- ========================================== -->
+<!-- BLOQUE 4: CIERRE Y REFLEXIÓN               -->
+<!-- ========================================== -->
+<!-- DIAPOSITIVA 15: CONCLUSIONES Y PREGUNTAS DE REFLEXIÓN -->
+<div class="slide" id="slide-15">
+<div class="slide-header">
+<div class="slide-title">Conclusiones y Preguntas de Reflexión (Debate)</div>
+<div class="slide-section-tag">6. Conclusiones</div>
+</div>
+<div class="slide-content" style="justify-content: space-between;">
+<div class="callout-box" style="border-left-color: #1E293B; margin-bottom: 10px; padding: 10px 15px;">
+<p style="font-size: 20px; margin-bottom: 0;">
+                    • <strong>Clustering por Partición:</strong> No requiere etiquetas, pero las funciones cuadráticas (SSE) sufren enmascaramiento y asumen formas esféricas rígidas.<br/>
+                    • <strong>Agrupación por Densidad (DBSCAN):</strong> Recupera exitosamente la taxonomía completa mapeando formas complejas e irregulares.<br/>
+                    • <strong>Siguiente Paso Técnico:</strong> Modelos nativos de aislamiento local como <em>Local Outlier Factor (LOF)</em> y <em>One-Class SVM</em>.
+                </p>
+</div>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">15</div></div>
+</div>
+<div class="slide" id="slide-16">
+<div class="slide-header">
+<div class="slide-title">Preguntas de reflexión</div>
+<div class="slide-section-tag">/ 7. Preguntas de Reflexión</div>
+</div>
+<div class="slide-content" style="justify-content: space-between;">
+<p style="font-size: 20px; margin-bottom: 4px;">1. Suponer que un dataset tiene millones de transacciones. Los algoritmos que miden la distancia de cada punto contra *todos* los demás se volverán lento, pues el tiempo de cálculo crece al cuadrado ($\mathcal{O}(n^2)$). ¿qué manera práctica existe para no comparar todo con todo?</p>
+<p style="font-size: 20px; margin-bottom: 4px;">2. En un modelo de negocio de retail ¿Qué es más preferible? ¿un modelo muy estricto que detenga algunas compras reales (FP), o un modelo relajado que deje pasar algunos fraudes (FN) para no molestar a los clientes?</p>
+<p style="font-size: 20px; margin-bottom: 4px;">3. Vimos que hacer una compra a las 3:00 a.m. se detecta como una anomalía contextual. Sin embargo, ¿qué pasaría con nuestro modelo si llega la temporada del "Buen Fin" o "Cyber Monday", donde miles de clientes legítimos compran de madrugada? ¿Cómo se evitarían que el algoritmo marque una gran cantidad de observaciones como outliers colectivos?</p>
+</div>
+<div class="slide-footer"><div>Examen 4 — Detección de Outliers I</div><div class="slide-number">15</div></div>
+</div>
+</body>
+</html>

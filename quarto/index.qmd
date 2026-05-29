@@ -1,0 +1,1125 @@
+---
+title: "Examen 4"
+author: "Gustavo Alonso Dominguez Sánchez"
+date: today
+lang: es
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+  pdf:
+    geometry:
+      - top=25mm
+      - left=20mm
+      - right=20mm
+      - bottom=25mm
+bibliography: referencias.bib
+nocite: |
+  @*
+---
+
+# Detección de Outliers I
+
+## Introducción
+
+En las etapas iniciales de muchos proyectos de minería de datos, particularmente durante el Análisis Exploratorio de Datos (EDA) y el Pre-procesamiento de datos (en la etapa de limpieza), lo usual es querer aislar y eliminar los valores extremos. En ese contexto, los valores atípicos son tratados como una molestia estadística que deforman la convergencia o estabilidad de nuestros modelos predictivos. Sin embargo, cuando se quiere trabajar un modelo para la **Detección de Outliers**, el enfoque se invierte: los datos atípicos dejan de ser un estorbo para convertirse en el objetivo principal del análisis.
+
+### Outlier y ruido
+Para empezar a abordar el problema de la detección, es imprescindible establecer una distinción conceptual entre outlier y ruido.
+
+El **ruido** es una interferencia estocastica, es decir variación o error de medida aleatorio que no es explicada dentro de la distribución de los datos, que suelen ser no deseado. Por el contrario, un **outlier** (o valor atípico) es una observación que tiene características o valores diferentes o inusuales a las demás observaciones del dataset. Un outlier no es un error aleatorio, por lo que no es ruido. La definición formal más aceptada en la literatura estadística fue propuesta por Hawkins (1980), quien establece que una anomalía es:
+
+> *"Una observación que se desvía tanto de las demás observaciones como para despertar sospechas de que fue generada por un mecanismo diferente."*
+
+Matemáticamente, si asumimos que la gran mayoría de nuestros datos $X = \{x_1, x_2, \dots, x_n\}$ son generados implicitamente por una distribución de probabilidad $\mathcal{D}$, un outlier es un punto $x_i$ cuya probabilidad de haber sido generado por $\mathcal{D}$ es extremadamente pequeña, es decir, $P(x_i \mid X \sim \mathcal{D}) \approx 0$.
+
+::: {.callout-note appearance="simple" icon="false"}
+### Aclaración Semántica: ¿Outlier o Anomalía?
+En la literatura coloquial y la estadística básica, suele hacerse una distinción: un **outlier** se define puramente como un valor numérico extremo (que puede ser un evento genuino y válido de la varianza natural), mientras que una **anomalía** implica un comportamiento ilegítimo, un error o una desviación del mecanismo esperado que requiere \underline{contexto}.
+
+Sin embargo, en la literatura de minería de datos de nuestra bibliografía, (particularmente bajo la taxonomía de Chandola), **ambos términos se utilizan como sinónimos**. En este documento, utilizaremos ambos términos de forma intercambiable.
+
+> *"These non-conforming patterns are often referred to as anomalies, outliers, discordant observations, exceptions, aberrations, surprises, peculiarities or contaminants."*
+:::
+
+Los outliers son datos de gran interés para el negocio. Por mencionar algunos ejemplos, en el sector financiero, un outlier puede representar un fraude en transacciones; en ciberseguridad, puede indica una envio masivo de paquetes de red a un servidor; en la medicina, puede ser el indicador de una patología grave. En todos estos casos, encontrar el evento raro es mucho más difícil que modelar el comportamiento común.
+
+### Límite entre lo Normal (Típico) y lo Anormal (Atípico)
+
+Plantear la detección de anomalías como un simple problema de clasificación supervisada (donde $y \in \{0, 1\}$) (es un dato normal o atípico) puede parecer simple, pero en la práctica existen limitaciones fundamentales que justifican el uso de enfoques no supervisados:
+
+1.  **Desbalance extremo de clases:** En un escenario real, la probabilidad de observar un dato normal es muchisimo mayor que la de observar un outlier, $P(y=\text{normal}) \gg P(y=\text{anomalía})$. Las anomalías suelen representar una ínfima parte del conjunto de datos. Un clasificador clásico, como una Regresión Logística, aprenderá rápidamente que predecir siempre "normal" minimiza su función de pérdida global, obteniendo una exactitud (*accuracy*) engañosa del $99.9\%$, pero con una exhaustividad (*recall*) del $0\%$ para la clase de interés.
+2.  **Delimitaciones espaciales difusas:** La transición entre un comportamiento normal y uno atípico rara vez es discreta o lineal. El límite suele ser una región continua donde la densidad de probabilidad disminuye gradualmente. Definir el hiperplano exacto donde termina la normalidad requiere algoritmos capaces de medir densidades relativas y topologías complejas en alta dimensión.
+3.  **Anomalías inteligentes:** A diferencia del ruido estático, en aplicaciones de seguridad podemos enfrentarnos a "anomalías inteligentes". Por ejemplo, los autores de fraudes, modelan intencionalmente su comportamiento para ocultarse dentro de la distribución $\mathcal{D}$, es decir, buscan que la anomalía parezca un dato normal, minimizando su distancia respecto a una media. Por lo tanto, el la definición de normal puede cambiar constantemente (*concept drift*), obligando a que nuestros algoritmos se adapten sin depender de un conjunto estático de reglas predefinidas.
+
+Ante este panorama, la detección de outliers se consolida como una de las áreas muy importante del aprendizaje automático. A continuación, estableceremos la formalización matemática necesaria para clasificar y entender la naturaleza geométrica de estas desviaciones.
+
+## Tipos de outliers
+
+La literatura moderna, fuertemente basada por los trabajos de Chandola (2009),establece que la dificultad de aislar una anomalía radica en la topología de los datos. Por lo tanto, el primer paso es particionar el concepto general de outlier en tres categorías mutuamente excluyentes, dependiendo de su naturaleza estructural.
+
+### Atípícos Globales o Puntuales
+
+Son los outliers más elementales ye estudiados. Si un dato individual puede considerarse anómalo con respecto al resto de los datos en su totalidad, sin necesidad de información adicional, estamos ante un outlier global o puntual.
+
+**Definición:** Sea $D$ nuestro conjunto de datos y un punto arbitrario $x_i \in D$. Asumiendo una función de distancia métrica $d(x, y)$ o un modelo de densidad de probabilidad $P(x)$, $x_i$ es una anomalía puntual si satisface:
+
+$$d(x_i, \mu_D) > \tau \quad \text{o} \quad P(x_i) < \epsilon$$
+
+donde $\mu$ representa el centroide, medoide o centro de masa definido por un algoritmo, $\tau$ es un umbral espacial de desviación (un máximo de distancia tolerable), y $\epsilon$ es un umbral de probabilidad infinitesimal (una probabilidad extremadamente baja de pertenecer a la distribución $P$).
+
+**Ejemplo:** En una base de datos transaccional, una transferencia aislada de $\$500,000$ MXN en una cuenta de nómina promedio representa una desviación extrema de los datos. Este registro se proyectará en un espacio de características lejos de cualquier centro de masa conocido.
+
+### Atípicos Contextuales
+
+Una observación es anómala *exclusivamente* bajo un contexto específico, pero podría ser catalogada como un dato de comportamiento normal bajo condiciones distintas. Para modelar este tipo, se dividen los atributos de cada observación $x_i$ dos particiones:
+
+1. Sea $C$ el conjunto de atributos contextuales, los cuales definen el contexto de la observación (ej. ubicación temporal o espacial).
+2. Sea $B$ el conjunto de atributos de comportamiento, las cuales deseamos evaluar (ej. monto de operación, temperatura registrada).
+
+Tal que el conjunto de atributos de los datos $Y=B\cup C, B\cap C = \emptyset$.
+
+
+**Definición:**
+Sea el dato $x_i = (x_{Ci}, x_{Bi})$. La condición de anomalía de $x_i$ no depende de la probabilidad marginal del comportamiento $P(x_{Bi})$, sino de la probabilidad condicional de observar dicho comportamiento dado su contexto $P(x_{Ci})$. Entonces un outlier es contextual si:
+
+$$P(x_{Ci} \mid x_{Bi}) < \epsilon$$
+
+**Ejemplo:** Registrar un cargo en tarjeta de crédito por $\$5,000$ MXN ($x_{Bi}$) es un evento común con alta probabilidad marginal. Sin embargo, si los atributos contextuales ($x_{Ci}$) de temporalidad nos dice que ocurrió a las 3:00 a.m., y el espacial indica que el cobro fue originado en el extranjero, la probabilidad condicional es extremadamente pequeña, por lo que el dato se trata de un outlier contextual.
+
+### Atípicos Colectivos
+
+En este escenario, los puntos de datos individuales que conforman la anomalía no son anómalos por sí mismos. Lo que constituye la anomalía es su aparición conjunta como una secuencia, un grupo o un patrón. Las anomalías colectivas solo pueden ocurrir en conjuntos de datos donde las instancias están interrelacionadas (datos secuenciales, espaciales o grafos).
+
+**Definición:**
+Sea un subconjunto $S \subset D$, tal que para todo punto individual $x_i \in S$, la probabilidad $P(x_i)$ es normal, el conjunto $S$ no lo es, viola la estructura estocástica general:
+
+$$P(S) < \epsilon \quad \text{tal que que los individuales no son indpendientes } \quad P(S) \neq \prod_{x_i \in S} P(x_i)$$
+
+La desigualdad nos indica que la correlación interna y la estructura del subconjunto $S$ son las variables que definen la anomalía, no los valores aislados.
+
+**Ejemplo:** En el análisis del tráfico de red de un servidor de red, el rechazo de un paquete de datos es un evento ordinario. Pero un subconjunto $S$ de 10,000 rechazos de paquetes dirigidos al mismo puerto en una lapso de un par de segundos constituye un ataque de seguridad, en particular un Ataque de Denegación de Servicio (DDoS). Individualmente son eventos normales; colectivamente, forman una topología de ataque coordinado.
+
+```{python}
+#| label: fig-taxonomia-outliers
+#| fig-cap: "Tipos de anomalías"
+#| fig-width: 12
+#| fig-height: 4.5
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+np.random.seed(42)
+
+# ==========================================
+# 1. Datos para Outlier Global (Monto vs Frecuencia)
+# ==========================================
+x_global = np.random.normal(5, 1.5, 100) # Frecuencia mensual
+y_global = np.random.normal(10000, 5000, 100) # Monto en MXN
+# Inyectar outlier global (Monto absurdo)
+x_global = np.append(x_global, 6)
+y_global = np.append(y_global, 50000) 
+
+# ==========================================
+# 2. Datos para Outlier Contextual (Hora vs Monto)
+# ==========================================
+# Compras normales entre las 9:00 y las 22:00 horas
+x_contextual = np.random.normal(15, 3, 100) 
+y_contextual = np.random.normal(5000, 1000, 100)
+# Inyectar outlier contextual (Monto normal, pero a las 3:45 a.m.)
+x_contextual = np.append(x_contextual, 3.75) 
+y_contextual = np.append(y_contextual, 5000)
+
+# ==========================================
+# 3. Datos para Outlier Colectivo (Tiempo vs Paquetes)
+# ==========================================
+tiempo = np.arange(0, 100)
+# Tráfico de red normal (ruido bajo)
+paquetes = np.random.poisson(lam=5, size=100)
+# Inyectar outlier colectivo (Ataque DDoS en ventana de t=70 a t=75)
+paquetes[70:76] = np.random.poisson(lam=80, size=6)
+
+# ==========================================
+# Creación de Subplots (1 fila, 3 columnas)
+# ==========================================
+fig = make_subplots(rows=1, cols=3, 
+                    subplot_titles=("A) Outlier Global", "B) Outlier Contextual", "C) Outlier Colectivo"),
+                    horizontal_spacing=0.08)
+
+# Panel A: Global
+fig.add_trace(go.Scatter(x=x_global[:-1], y=y_global[:-1], mode='markers', 
+                         marker=dict(color='#1f77b4', size=6, opacity=0.7), name='Normal'), row=1, col=1)
+fig.add_trace(go.Scatter(x=[x_global[-1]], y=[y_global[-1]], mode='markers', 
+                         marker=dict(color='red', size=10, symbol='x', line=dict(width=2)), name='Anomalía Global'), row=1, col=1)
+
+# Panel B: Contextual
+fig.add_trace(go.Scatter(x=x_contextual[:-1], y=y_contextual[:-1], mode='markers', 
+                         marker=dict(color='#1f77b4', size=6, opacity=0.7), showlegend=False), row=1, col=2)
+fig.add_trace(go.Scatter(x=[x_contextual[-1]], y=[y_contextual[-1]], mode='markers', 
+                         marker=dict(color='red', size=10, symbol='x', line=dict(width=2)), name='Anomalía Contextual'), row=1, col=2)
+
+# Panel C: Colectivo
+# Trazamos la línea base
+fig.add_trace(go.Scatter(x=tiempo[:70], y=paquetes[:70], mode='lines+markers', 
+                         line=dict(color='#1f77b4'), marker=dict(size=4), showlegend=False), row=1, col=3)
+fig.add_trace(go.Scatter(x=tiempo[75:], y=paquetes[75:], mode='lines+markers', 
+                         line=dict(color='#1f77b4'), marker=dict(size=4), showlegend=False), row=1, col=3)
+# Resaltamos la ráfaga
+fig.add_trace(go.Scatter(x=tiempo[69:76], y=paquetes[69:76], mode='lines+markers', 
+                         line=dict(color='red', width=3), marker=dict(size=6, symbol='x'), name='Anomalía Colectiva'), row=1, col=3)
+
+# ==========================================
+# Diseño y Formato
+# ==========================================
+fig.update_xaxes(title_text="Frecuencia Mensual", row=1, col=1)
+fig.update_yaxes(title_text="Monto ($)", row=1, col=1)
+
+fig.update_xaxes(title_text="Hora (0-24)", range=[0, 24], row=1, col=2)
+fig.update_yaxes(title_text="Monto ($)", row=1, col=2)
+
+fig.update_xaxes(title_text="Tiempo (segundos)", row=1, col=3)
+fig.update_yaxes(title_text="Paquetes Rechazados", row=1, col=3)
+
+fig.update_layout(height=450, width=1100, 
+                  template="plotly_white",
+                  legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5))
+
+fig.show()
+```
+
+## Enfoques para la Detección
+
+La detección de anomalías es un problema que carece de una formulación única y definitiva. La decisión sobre qué algoritmo utilizar depende enteramente de cómo definamos la "normalidad" en nuestros datos. Existen diferentes enfoques que podemos adoptar.
+
+### Métodos Estadísticos vs. Basados en Proximidad
+
+Los métodos estadísticos asumen que los datos siguen una distribución de probabilidad conocida (por ejemplo, una distribución normal o gaussiana). Bajo este enfoque, un dato se considera atípico si cae más allá de un umbral estadístico determinado. La gran limitación de estos métodos es que en el mundo real (especialmente con múltiples dimensiones), los datos rara vez siguen una distribución teórica perfecta.
+
+Para solventar esto, utilizamos los métodos basados en proximidad, los cuales son no paramétricos (no asumen ninguna distribución). Su premisa es puramente geométrica: *un registro es atípico si la cercanía a sus vecinos es significativamente menor que la cercanía de la mayoría de los otros registros a sus respectivos vecinos*.
+
+Para medir esta cercanía, dependemos de funciones de similitud y distancia. Las principales métricas utilizadas en minería de datos son:
+
+* **Distancia Euclidiana:** Calcula la distancia mínima en línea recta entre dos objetos $a$ y $b$ con $p$ atributos numéricos. Es muy sensible a valores extremos.
+    $$d(a,b) = \sqrt{ (x_{a1}-x_{b1})^2 + (x_{a2}-x_{b2})^2 + \dots + (x_{ap}-x_{bp})^2 }$$
+
+* **Distancia de Manhattan:** Calcula la distancia como la suma de las diferencias absolutas en cada eje coordenado (sin movimientos diagonales).
+    $$d(a,b) = |x_{a1} - x_{b1}| + |x_{a2} - x_{b2}| + \dots + |x_{ap} - x_{bp}|$$
+
+* **Distancia de Hamming y Gower:** Hamming se utiliza para contar diferencias en datos categóricos. Gower es la métrica de grado industrial para calcular la similitud en bases de datos que mezclan datos numéricos y nominales, asegurando que la salida se mantenga en el intervalo $[0, 1]$.
+
+::: {.callout-warning appearance="simple"}
+**Escalamiento de Datos**
+Como se establece en el análisis de proximidad, antes de aplicar cualquier fórmula de distancia matemática, **los datos deben estar escalados** (por ejemplo, con media cero y desviación estándar de uno). Si omitimos este paso, el atributo con el rango de valores más grande dominará por completo el cálculo de la distancia, generando detecciones de anomalías falsas y sesgadas.
+:::
+
+Utilizando estas distancias, los enfoques de proximidad detectan outliers buscando:
+1. Los datos que tienen menos de $p$ vecinos a una distancia $d$ establecida.
+2. Los datos cuya distancia al $k$-ésimo vecino más cercano es la mayor.
+3. Los datos cuya distancia promedio a los $k$ vecinos más cercanos es la mayor.
+
+#### Demostración Visual: Distancia al k-ésimo Vecino
+
+A continuación, implementamos el segundo enfoque de proximidad. Calcularemos la distancia de cada punto a su 5º vecino más cercano. Aquellos con la distancia más grande serán revelados como outliers.
+
+```{python}
+#| label: fig-proximidad-knn
+#| fig-cap: "Detección basada en proximidad. El color y tamaño de los puntos representan su distancia al 5º vecino más cercano (K-NN Distance). Los puntos aislados obtienen puntajes de anomalía drásticamente mayores."
+
+import numpy as np
+import plotly.express as px
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import StandardScaler
+from sklearn.datasets import make_blobs
+
+# 1. Generamos un dataset con un clúster principal y algunos outliers dispersos
+np.random.seed(42)
+X_normal, _ = make_blobs(n_samples=300, centers=1, cluster_std=1.0, center_box=(0, 0))
+X_outliers = np.random.uniform(low=-6, high=6, size=(15, 2))
+X = np.vstack([X_normal, X_outliers])
+
+# 2. Escalamiento de datos (Paso obligatorio)
+X_scaled = StandardScaler().fit_transform(X)
+
+# 3. Cálculo de la distancia al k-ésimo vecino (k=5)
+k = 5
+nbrs = NearestNeighbors(n_neighbors=k).fit(X_scaled)
+distancias, _ = nbrs.kneighbors(X_scaled)
+
+# Extraemos la distancia exclusiva al 5to vecino
+distancia_k = distancias[:, k-1]
+
+# 4. Visualización
+fig = px.scatter(
+    x=X_scaled[:, 0], y=X_scaled[:, 1], 
+    color=distancia_k, 
+    size=distancia_k + 0.1, # Se suma 0.1 para que los puntos normales no desaparezcan
+    color_continuous_scale='Reds',
+    title="Score de Anomalía basado en Proximidad (Distancia al 5to Vecino)",
+    labels={'x': 'Característica 1 (Escalada)', 'y': 'Característica 2 (Escalada)', 'color': 'Distancia a k=5'}
+)
+
+fig.update_layout(height=450, template="plotly_white")
+fig.show()
+```
+
+### Detección Basada en Clustering
+Mientras que los métodos de proximidad evalúan el vecindario local punto por punto, los métodos basados en clustering adoptan una visión del conjunto de datos.
+
+Estos algoritmos no fueron diseñados originalmente para encontrar anomalías, sino para encontrar grupos similares. Sin embargo, podemos usarlos como detectores de outliers basándonos en un supuesto fundamental de distribución:
+
+> Los datos normales pertenecen a clústeres grandes y densos, en tanto que los outliers pertenecen a clústeres pequeños, dispersos, o no pertenecen a ninguno.
+
+Bajo este enfoque, si forzamos a un algoritmo de particionamiento a clasificar todos los datos, un registro será considerado anómalo si la distancia entre dicho registro y el centro del clúster más cercano es desproporcionadamente grande.
+
+La salida de este análisis no siempre es binaria (normal vs. anómalo). Dependiendo del algoritmo, la salida puede ser:
+
+* Una etiqueta: Clasificación dura que indica si es outlier o no.
+* Una calificación: Un valor continuo que cuantifica el nivel de anomalía de cada dato (como vimos en la gráfica de proximidad anterior).
+* Una lista: Los top-$n$ registros más alejados en distancia o proximidad.
+
+## Algoritmos Clásicos y sus Limitaciones
+
+Como establecimos en la detección basada en clustering, los algoritmos de particionamiento no fueron concebidos para buscar ruido, sino para consolidar densidades. Sin embargo, al modelar matemáticamente lo que es "normal", las anomalías emergen como un subproducto: son los residuos geómetricos del modelo. 
+
+A continuación, analizaremos a profundidad cómo se adaptan las dos familias clásicas de clustering (particionamiento y jerarquía) para la detección, y desglosaremos las limitaciones matemáticas inherentes a su diseño.
+
+### K-Means: ventajas y limitaciones
+
+El algoritmo K-Means es, por su eficiencia computacional, una de las primeras opciones para aislar outliers globales. Su mecanismo de detección post-entrenamiento es directo: un objeto $x$ se clasifica como anómalo si la distancia euclidiana a su centroide asignado $\mu_i$ excede un umbral predefinido.
+La calidad del agrupamiento en K-Means se define mediante la minimización de la Suma de Errores Cuadrados Intra-clúster (SSE o $E$):
+
+$$E = \sum_{i=1}^{k} \sum_{x \in C_i} d(x, \mu_i)^2 = \sum_{i=1}^{k} \sum_{x \in C_i} \|x - \mu_i\|^2$$
+
+donde $\mu_i$ es la media aritmética de los puntos en el clúster $C_i$.
+
+A continuación se observa el comportamiento de K-Means bajo condiciones ideales. Se particiona un dataset en 3 clústeres y se calculamos su error SSE:
+
+```{python}
+#| label: fig-kmeans-base
+#| fig-cap: "K-Means sin outliers. Tres clústeres bien separados con sus centroides (✕) y el SSE parcial de cada uno. El SSE total mide qué tan compactos y coherentes son los grupos."
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+
+# ── 1. Generar dataset con tres grupos naturales ──────────────────────────────
+# El clúster 2 tiene una "cola" hacia la frontera con el clúster 1,
+# lo que lo hace susceptible al arrastre cuando se inyecten outliers.
+np.random.seed(7)
+
+C1       = np.random.normal(loc=[-6, 0],   scale=[0.8, 0.8], size=(35, 2))
+C2       = np.random.normal(loc=[ 0, 0],   scale=[1.2, 1.2], size=(40, 2))
+C3_core  = np.random.normal(loc=[ 5, 0],   scale=[0.8, 0.8], size=(25, 2))
+C3_tail  = np.random.normal(loc=[ 2.5, 0], scale=[0.5, 0.8], size=(15, 2))
+C3       = np.vstack([C3_core, C3_tail])
+X_base   = np.vstack([C1, C2, C3])
+
+# ── 2. Ajustar K-Means (k = 3) ───────────────────────────────────────────────
+kmeans_base = KMeans(n_clusters=3, random_state=42, n_init=10)
+labels_base = kmeans_base.fit_predict(X_base)
+cent_base   = kmeans_base.cluster_centers_
+sse_base    = kmeans_base.inertia_          # SSE total = E(S)
+
+# ── 3. Tabla de resumen por clúster ──────────────────────────────────────────
+resumen = []
+for i in range(3):
+    pts   = X_base[labels_base == i]
+    sse_i = np.sum(np.linalg.norm(pts - cent_base[i], axis=1) ** 2)
+    resumen.append({
+        "Clúster"          : i + 1,
+        "Puntos (n)"       : len(pts),
+        "Centroide (x, y)" : f"({cent_base[i, 0]:.2f}, {cent_base[i, 1]:.2f})",
+        "SSE parcial"      : round(sse_i, 2),
+    })
+
+df_base = pd.DataFrame(resumen)
+print("── K-MEANS SIN OUTLIERS ──────────────────────────")
+print(f"   SSE Total E(S) = {sse_base:.2f}\n")
+print(df_base.to_string(index=False))
+
+# ── 4. Gráfico de dispersión ──────────────────────────────────────────────────
+PALETTE = ["#5b7fbb", "#e87d4c", "#6cb86a"]
+
+fig, ax = plt.subplots(figsize=(8, 5))
+
+for i in range(3):
+    pts = X_base[labels_base == i]
+    ax.scatter(pts[:, 0], pts[:, 1],
+               color=PALETTE[i], alpha=0.60, s=48,
+               label=f"Clúster {i + 1}  (n={len(pts)})")
+
+ax.scatter(cent_base[:, 0], cent_base[:, 1],
+           c="black", marker="X", s=230, zorder=5, label="Centroides")
+
+for i, c in enumerate(cent_base):
+    pts   = X_base[labels_base == i]
+    sse_i = np.sum(np.linalg.norm(pts - c, axis=1) ** 2)
+    ax.annotate(
+        f" C{i + 1}\nSSE={sse_i:.1f}",
+        xy=c, fontsize=8.5, color="black",
+        xytext=(c[0] + 0.25, c[1] + 0.55),
+    )
+
+ax.set_title(
+    f"K-Means sin Outliers  │  SSE Total = {sse_base:.2f}",
+    fontsize=13, pad=10,
+)
+ax.set_xlabel("Característica 1")
+ax.set_ylabel("Característica 2")
+ax.legend(loc="upper right", fontsize=9)
+plt.tight_layout()
+plt.show()
+```
+
+#### Limitaciones con centroides
+
+Si analizamos la función $E$, notamos que la penalización por la distancia es cuadrática. Esto introduce una limitación importante: Si existe un outlier global extremo en el espacio de características, su distancia al cuadrado representará una porción masiva del error total $E$. Dado que la naturaleza del algoritmo es minimizar este error, K-Means compensará moviendo agresivamente el centroide $\mu_i$ hacia el outlier. 
+
+Esta deformación del espacio tiene dos consecuencias fatales para la detección de anomalías:
+
+1. **Falsos Negativos:** Al arrastrar el centroide hacia sí mismo, el outlier acorta su propia distancia a $\mu_i$, camuflándose y reduciendo su "score" de anomalía tanto a el mismo como a otras observaciones, clasificandolos como normales pudiendo ser outliers genuinos.
+2. **Falsos Positivos:** Al desplazar el centroide lejos del centro de masa real de los datos normales, los puntos legítimos que quedaron en el extremo opuesto ahora reportarán una distancia artificialmente alta, siendo clasificados erróneamente como anomalías.
+
+Para demostrar visualmente esta limitaciones, inyectaremos un pequeño grupo de outliers extremos al mismo conjunto de datos anterior. Mantendremos los datos normales en escala de grises para aislar visualmente el daño: colorearemos únicamente aquellos puntos legítimos que, debido al arrastre gravitacional del centroide, fueron reasignados erróneamente de clúster (nuestros Falsos Positivos y Falsos Negativos).
+```{python}
+#| label: fig-kmeans-arrastre
+#| fig-cap: "Efecto del arrastre por outliers. Los puntos grises son datos normales que mantuvieron su clúster. Los puntos coloreados y con borde negro son los que cambiaron de clúster (FP/FN). Las flechas negras muestran el desplazamiento real de cada centroide; el del Clúster 2 se mueve 1.85 unidades hacia los outliers, suficiente para reasignar 12 puntos fronterizos al Clúster 1."
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
+
+# ── 1. Reproducir exactamente el dataset del bloque anterior ─────────────────
+np.random.seed(7)
+
+C1       = np.random.normal(loc=[-6, 0],   scale=[0.8, 0.8], size=(35, 2))
+C2       = np.random.normal(loc=[ 0, 0],   scale=[1.2, 1.2], size=(40, 2))
+C3_core  = np.random.normal(loc=[ 5, 0],   scale=[0.8, 0.8], size=(25, 2))
+C3_tail  = np.random.normal(loc=[ 2.5, 0], scale=[0.5, 0.8], size=(15, 2))
+C3       = np.vstack([C3_core, C3_tail])
+X_base   = np.vstack([C1, C2, C3])
+
+kmeans_base = KMeans(n_clusters=3, random_state=42, n_init=10)
+labels_base = kmeans_base.fit_predict(X_base)
+cent_base   = kmeans_base.cluster_centers_
+sse_base    = kmeans_base.inertia_
+
+# ── 2. Inyectar outliers extremos (lado derecho) ──────────────────────────────
+# Los outliers están a x≈11-12, mientras que el clúster 2 está en x≈5.
+# Fuerzan que el centroide del clúster 2 se desplace ~1.85 unidades
+# hacia la derecha, dejando su cola fronteriza (x≈2-3) más cerca del clúster 1.
+X_outliers  = np.array([
+    [11.0,  0.0],
+    [11.5,  0.5],
+    [11.0, -0.5],
+    [12.0,  0.0],
+    [11.8, -0.3],
+])
+X_cont = np.vstack([X_base, X_outliers])
+
+# ── 3. K-Means contaminado ────────────────────────────────────────────────────
+kmeans_cont = KMeans(n_clusters=3, random_state=42, n_init=10)
+labels_cont = kmeans_cont.fit_predict(X_cont)
+cent_cont   = kmeans_cont.cluster_centers_
+sse_cont    = kmeans_cont.inertia_
+
+# ── 4. Alinear etiquetas: Hungarian algorithm ─────────────────────────────────
+# Garantiza que el "Clúster 1 limpio" corresponda al mismo clúster lógico
+# tras el re-entrenamiento, sin importar el orden que devuelva KMeans.
+dist_matrix            = cdist(cent_base, cent_cont)
+row_ind, col_ind       = linear_sum_assignment(dist_matrix)
+mapeo_cont_a_base      = dict(zip(col_ind, row_ind))  # índice_cont → índice_base
+
+labels_cont_pts        = labels_cont[: len(X_base)]
+labels_alineadas       = np.array([mapeo_cont_a_base[l] for l in labels_cont_pts])
+
+# ── 5. Identificar cambios de clúster ────────────────────────────────────────
+cambiaron      = labels_base != labels_alineadas          # máscara de puntos afectados
+n_cambios      = cambiaron.sum()
+orig_cluster   = labels_base[cambiaron]                   # clúster de origen
+nuevo_cluster  = labels_alineadas[cambiaron]              # clúster de destino
+
+# ── 6. Tabla de resumen actualizada ──────────────────────────────────────────
+resumen_cont = []
+for base_i, cont_j in zip(row_ind, col_ind):
+    pts   = X_cont[labels_cont == cont_j]
+    sse_i = np.sum(np.linalg.norm(pts - cent_cont[cont_j], axis=1) ** 2)
+    delta = np.linalg.norm(cent_cont[cont_j] - cent_base[base_i])
+    resumen_cont.append({
+        "Clúster"               : base_i + 1,
+        "Nuevo tamaño"          : len(pts),
+        "Nuevo centroide (x, y)": f"({cent_cont[cont_j, 0]:.2f}, {cent_cont[cont_j, 1]:.2f})",
+        "Nuevo SSE parcial"     : round(sse_i, 2),
+        "Δ Centroide"           : round(delta, 2),
+    })
+
+resumen_cont = sorted(resumen_cont, key=lambda d: d["Clúster"])
+df_cont = pd.DataFrame(resumen_cont)
+
+print("── K-MEANS CON OUTLIERS ──────────────────────────────")
+print(f"   SSE Total E(S) = {sse_cont:.2f}  (Δ = +{sse_cont - sse_base:.2f})\n")
+print(df_cont.to_string(index=False))
+print(f"\n   Puntos que cambiaron de clúster: {n_cambios}")
+print( "   (Todos emigraron Clúster 2 → Clúster 1 por arrastre del centroide)")
+
+# ── 7. Gráfico del daño geométrico ───────────────────────────────────────────
+# Color de los puntos que cambiaron, agrupados por nuevo clúster lógico
+COLOR_CAMBIO = {0: "#e74c3c", 1: "#f39c12", 2: "#9b59b6"}   # rojo, naranja, violeta
+
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# A) Datos normales sin cambio → escala de grises
+ax.scatter(
+    X_base[~cambiaron, 0], X_base[~cambiaron, 1],
+    c="#cccccc", alpha=0.45, s=42,
+    label="Datos normales (sin cambio)",
+)
+
+# B) Puntos que cambiaron de clúster → color por nuevo clúster + borde negro
+for nc in np.unique(nuevo_cluster):
+    mask = cambiaron & (labels_alineadas == nc)
+    ax.scatter(
+        X_base[mask, 0], X_base[mask, 1],
+        color=COLOR_CAMBIO[nc % 3],
+        edgecolors="black", linewidths=0.9,
+        s=95, zorder=4,
+        label=f"Cambió → Clúster {nc + 1}  ({mask.sum()} pts)  [FP / FN]",
+    )
+
+# C) Outliers inyectados
+ax.scatter(
+    X_outliers[:, 0], X_outliers[:, 1],
+    c="#c0392b", marker="D", s=105, zorder=5,
+    edgecolors="black", linewidths=1.1,
+    label=f"Outliers inyectados ({len(X_outliers)})",
+)
+
+# D) Centroides originales (fantasmas semitransparentes)
+ax.scatter(
+    cent_base[:, 0], cent_base[:, 1],
+    c="steelblue", marker="x", s=170, linewidths=2.2,
+    alpha=0.50, zorder=5,
+    label="Centroides originales",
+)
+
+# E) Centroides desplazados (nuevos)
+ax.scatter(
+    cent_cont[:, 0], cent_cont[:, 1],
+    c="darkred", marker="X", s=260, zorder=6,
+    label="Centroides desplazados",
+)
+
+# F) Flechas de arrastre solo donde hubo desplazamiento real
+for r, c in zip(row_ind, col_ind):
+    old  = cent_base[r]
+    new  = cent_cont[c]
+    dist = np.linalg.norm(new - old)
+    if dist > 0.05:
+        ax.annotate(
+            "", xy=new, xytext=old,
+            arrowprops=dict(
+                arrowstyle="->", color="black",
+                lw=2.1, connectionstyle="arc3,rad=0.12",
+            ),
+        )
+
+ax.set_title(
+    f"K-Means con Outliers  │  SSE = {sse_cont:.2f}  (+{sse_cont - sse_base:.2f})\n"
+    f"{n_cambios} puntos fronterizos cambiaron de clúster por arrastre del centroide",
+    fontsize=12, pad=10,
+)
+ax.set_xlabel("Característica 1")
+ax.set_ylabel("Característica 2")
+ax.legend(loc="upper left", fontsize=8.5, framealpha=0.85)
+plt.tight_layout()
+plt.show()
+```
+
+#### Alternativa con medoides: K-Medoides (PAM)**
+
+Para mitigar la extrema sensibilidad a los valores atípicos, el algoritmo Partitioning Around Medoids (PAM) sustituye la media geométrica por un **medoide**. Un medoide es un punto de datos *real* perteneciente al conjunto, elegido de tal forma que se minimice la suma de distancias absolutas (no cuadráticas) hacia los demás puntos de su clúster. 
+
+Al utilizar métricas como la distancia de Manhattan y evitar el promedio ponderado, PAM se vuelve más robusto. El centro de gravedad del clúster se mantiene anclado en la densidad real de los datos, permitiendo que el outlier global permanezca verdaderamente aislado y su puntaje de anomalía refleje la realidad.
+
+```{python}
+#| label: fig-pam-robusto
+#| fig-cap: "PAM sobre el mismo dataset contaminado del bloque anterior. Los medoides (⊕ verde) permanecen anclados en la densidad real de los datos; los 5 outliers son absorbidos por el clúster derecho sin desplazar su centro. Solo 3 puntos fronterizos cambian de asignación (vs. 12 en K-Means), una reducción del 75 % en el daño colateral."
+
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans
+from scipy.spatial.distance import cdist
+from scipy.optimize import linear_sum_assignment
+import matplotlib.pyplot as plt
+
+# ── 1. Reproducir exactamente el dataset del bloque anterior ─────────────────
+np.random.seed(7)
+
+C1      = np.random.normal(loc=[-6,   0], scale=[0.8, 0.8], size=(35, 2))
+C2      = np.random.normal(loc=[ 0,   0], scale=[1.2, 1.2], size=(40, 2))
+C3_core = np.random.normal(loc=[ 5,   0], scale=[0.8, 0.8], size=(25, 2))
+C3_tail = np.random.normal(loc=[ 2.5, 0], scale=[0.5, 0.8], size=(15, 2))
+X_base  = np.vstack([C1, C2, np.vstack([C3_core, C3_tail])])
+
+X_outliers = np.array([[11.0, 0.0], [11.5, 0.5], [11.0, -0.5],
+                        [12.0, 0.0], [11.8, -0.3]])
+X_cont = np.vstack([X_base, X_outliers])
+n_base = len(X_base)
+
+# Referencia: K-Means limpio (para calcular Δ de posición)
+km_ref      = KMeans(n_clusters=3, random_state=42, n_init=10)
+labels_base = km_ref.fit_predict(X_base)
+cent_base   = km_ref.cluster_centers_
+sse_base    = km_ref.inertia_
+
+# K-Means contaminado (para la tabla comparativa)
+km_cont     = KMeans(n_clusters=3, random_state=42, n_init=10)
+labels_cont = km_cont.fit_predict(X_cont)
+cent_cont   = km_cont.cluster_centers_
+sse_cont    = km_cont.inertia_
+
+# Alinear etiquetas K-Means contaminado con referencia
+dm_km          = cdist(cent_base, cent_cont)
+ri_km, ci_km   = linear_sum_assignment(dm_km)
+m_km           = dict(zip(ci_km, ri_km))
+labels_cont_al = np.array([m_km[l] for l in labels_cont])
+cambiaron_km   = labels_base != labels_cont_al[:n_base]
+
+# ── 2. PAM — Partitioning Around Medoids ─────────────────────────────────────
+def pam_fit(X, k, metric='cityblock', random_state=42, max_iter=300):
+    """
+    Implementación de PAM con distancia de Manhattan (cityblock).
+
+    En cada iteración:
+      1. Asigna cada punto al medoide más cercano.
+      2. Dentro de cada clúster, elige como nuevo medoide el punto
+         que minimiza la suma total de distancias absolutas a los demás.
+    Converge cuando ningún medoide cambia.
+    """
+    rng        = np.random.RandomState(random_state)
+    n          = len(X)
+    medoid_idx = rng.choice(n, size=k, replace=False)   # inicialización aleatoria
+    D          = cdist(X, X, metric=metric)               # matriz n×n de distancias
+
+    for _ in range(max_iter):
+        labels  = np.argmin(D[:, medoid_idx], axis=1)    # asignación
+        new_med = medoid_idx.copy()
+        changed = False
+        for j in range(k):
+            pts = np.where(labels == j)[0]
+            if len(pts) == 0:
+                continue
+            costs   = D[np.ix_(pts, pts)].sum(axis=1)    # SAD intra-clúster
+            best    = pts[np.argmin(costs)]
+            if best != new_med[j]:
+                new_med[j] = best
+                changed    = True
+        medoid_idx = new_med
+        if not changed:                                    # criterio de parada
+            break
+
+    labels = np.argmin(D[:, medoid_idx], axis=1)
+    return medoid_idx, labels
+
+medoid_idx_pam, labels_pam = pam_fit(X_cont, k=3, metric='cityblock',
+                                      random_state=42)
+medoids_pam = X_cont[medoid_idx_pam]
+
+# SAD total (equivalente al SSE pero con distancias absolutas)
+D_full    = cdist(X_cont, X_cont, metric='cityblock')
+sad_total = sum(
+    D_full[np.where(labels_pam == j)[0], medoid_idx_pam[j]].sum()
+    for j in range(3)
+)
+
+# ── 3. Alinear etiquetas PAM con referencia ───────────────────────────────────
+dm_pam         = cdist(cent_base, medoids_pam)
+ri_p, ci_p     = linear_sum_assignment(dm_pam)
+m_pam          = dict(zip(ci_p, ri_p))
+labels_pam_al  = np.array([m_pam[l] for l in labels_pam])
+cambiaron_pam  = labels_base != labels_pam_al[:n_base]
+nuevo_cl_pam   = labels_pam_al[:n_base][cambiaron_pam]
+
+# ── 4. Tabla comparativa (3 columnas: limpio · K-Means cont. · PAM) ──────────
+rows = []
+for base_i in range(3):
+    # -- K-Means limpio
+    pts_cl   = X_base[labels_base == base_i]
+    sse_cl   = np.sum(np.linalg.norm(pts_cl - cent_base[base_i], axis=1) ** 2)
+
+    # -- K-Means contaminado
+    km_j     = ci_km[np.where(ri_km == base_i)[0][0]]
+    pts_km   = X_cont[labels_cont == km_j]
+    sse_km   = np.sum(np.linalg.norm(pts_km - cent_cont[km_j], axis=1) ** 2)
+    Δ_cent   = np.linalg.norm(cent_cont[km_j] - cent_base[base_i])
+
+    # -- PAM
+    pam_j    = ci_p[np.where(ri_p == base_i)[0][0]]
+    pts_pam  = np.where(labels_pam == pam_j)[0]
+    sad_j    = D_full[pts_pam, medoid_idx_pam[pam_j]].sum()
+    med_xy   = X_cont[medoid_idx_pam[pam_j]]
+    Δ_med    = np.linalg.norm(med_xy - cent_base[base_i])
+
+    rows.append({
+        "Clúster"              : base_i + 1,
+        "n (limpio)"           : len(pts_cl),
+        "SSE K-Means"          : round(sse_km, 1),
+        "Δ Centroide"          : round(Δ_cent, 2),
+        "n PAM"                : len(pts_pam),
+        "SAD PAM"              : round(sad_j, 1),
+        "Δ Medoide"            : round(Δ_med, 2),
+    })
+
+df_comp = pd.DataFrame(sorted(rows, key=lambda x: x["Clúster"]))
+
+print("── PAM vs K-MEANS (datos contaminados) ──────────────────────────────")
+print(f"   SAD Total PAM       = {sad_total:.2f}")
+print(f"   SSE K-Means cont.   = {sse_cont:.2f}  (+{sse_cont - sse_base:.2f} vs. limpio)")
+print(f"\n   Puntos reasignados · K-Means : {cambiaron_km.sum()}")
+print(f"   Puntos reasignados · PAM     : {cambiaron_pam.sum()}  "
+      f"(−{cambiaron_km.sum() - cambiaron_pam.sum()} puntos protegidos)\n")
+print(df_comp.to_string(index=False))
+
+# ── 5. Gráfico ────────────────────────────────────────────────────────────────
+fig, ax = plt.subplots(figsize=(10, 6))
+
+# A) Datos sin cambio → gris
+ax.scatter(
+    X_base[~cambiaron_pam, 0], X_base[~cambiaron_pam, 1],
+    c="#cccccc", alpha=0.45, s=42,
+    label="Datos normales (sin cambio)",
+)
+
+# B) Puntos que cambiaron de clúster → coloreados + borde negro
+for nc in np.unique(nuevo_cl_pam):
+    mask = cambiaron_pam & (labels_pam_al[:n_base] == nc)
+    ax.scatter(
+        X_base[mask, 0], X_base[mask, 1],
+        color="#f39c12", edgecolors="black", linewidths=0.9,
+        s=95, zorder=4,
+        label=f"Cambiaron → Clúster {nc + 1}  ({mask.sum()} pts)  [FP / FN residual]",
+    )
+
+# C) Outliers inyectados
+ax.scatter(
+    X_outliers[:, 0], X_outliers[:, 1],
+    c="#c0392b", marker="D", s=110, zorder=5,
+    edgecolors="black", linewidths=1.1,
+    label=f"Outliers inyectados ({len(X_outliers)})",
+)
+
+# D) Centroides originales (referencia en azul semitransparente)
+ax.scatter(
+    cent_base[:, 0], cent_base[:, 1],
+    c="steelblue", marker="x", s=160, linewidths=2.2,
+    alpha=0.50, zorder=5,
+    label="Centroides K-Means (referencia)",
+)
+
+# E) Medoides PAM → círculo con borde verde, cruz interior
+medoid_legend_done = False
+for j in range(3):
+    pam_j = ci_p[np.where(ri_p == j)[0][0]]
+    med   = X_cont[medoid_idx_pam[pam_j]]
+    lbl   = "Medoides PAM (punto real)" if not medoid_legend_done else "_nolegend_"
+    ax.scatter(med[0], med[1],
+               c="white", edgecolors="#27ae60", linewidths=2.5,
+               s=290, zorder=6, marker="o", label=lbl)
+    ax.scatter(med[0], med[1],
+               c="#27ae60", s=65, zorder=7, marker="x", linewidths=2.2)
+    medoid_legend_done = True
+
+ax.set_title(
+    f"PAM sobre Dataset Contaminado  │  SAD Total = {sad_total:.2f}\n"
+    f"Puntos reasignados: {cambiaron_pam.sum()} (PAM)  vs.  "
+    f"{cambiaron_km.sum()} (K-Means)  —  reducción del "
+    f"{(1 - cambiaron_pam.sum() / cambiaron_km.sum()) * 100:.0f} %",
+    fontsize=12, pad=10,
+)
+ax.set_xlabel("Característica 1")
+ax.set_ylabel("Característica 2")
+ax.legend(loc="upper left", fontsize=8.5, framealpha=0.85)
+plt.tight_layout()
+plt.show()
+```
+
+### Algoritmos jerárquicos para detección de anomalías
+
+A diferencia de los métodos de particionamiento, los algoritmos jerárquicos como AGNES (AGglomerative NESting) quitan la obligación de adivinar el hiperparámetro $k$ a priori. Al construir un árbol de agrupaciones desde las hojas (donde cada punto es un clúster individual) hasta la raíz (un único clúster universal), el enfoque jerárquico nos otorga un parnorama completa de la topología de los datos a múltiples escalas de resolución.
+
+**Mecanismo de detección en Dendrogramas**
+
+En el clustering aglomerativo, las anomalías se revelan visual y matemáticamente en la estructura del dendrograma. Bajo este enfoque, un registro (o un micro-clúster) se considera anómalo si se cumple alguna de las siguientes condiciones estructurales:
+
+1. **Aislamiento tardío:** El nodo que contiene la anomalía no se fusiona con la masa principal de datos sino hasta los niveles más altos del árbol (distancias de enlace muy grandes, cerca de la raíz), índicando un atípico global.
+2. **Tamaño del clúster:** Si al "cortar" el dendrograma a un nivel de distancia lógico, obtenemos un clúster que contiene una fracción minúscula del total de los datos (por ejemplo, menos del $1\%$), ese grupo completo puede ser clasificado como un conjunto de atípicos colectivos.
+
+```{python}
+#| label: fig-dendrograma-ward
+#| fig-cap: "Dendrograma con Criterio de Ward. La línea de corte roja sugiere la formación de 4 clústeres. Obsérvese la rama aislada a la derecha: se une al árbol principal a una distancia excepcionalmente alta, revelando a los outliers."
+
+import matplotlib.pyplot as plt
+from scipy.cluster.hierarchy import linkage, dendrogram
+
+# Utilizamos el dataset contaminado (X_cont) del bloque anterior.
+# Calculamos la matriz de ligamiento usando el criterio de Ward
+Z_ward = linkage(X_cont, method='ward')
+
+plt.figure(figsize=(10, 5))
+
+# Dibujamos el dendrograma. 
+# color_threshold define dónde cambian de color las ramas (ideal para simular un "corte")
+corte_sugerido = 12.0
+dendro = dendrogram(Z_ward, color_threshold=corte_sugerido, 
+                    above_threshold_color='gray', 
+                    truncate_mode=None,
+                    no_labels=True) # Ocultamos las etiquetas individuales por limpieza visual
+
+# Dibujar línea de corte transversal
+plt.axhline(y=corte_sugerido, c='red', lw=2, linestyle='dashed', label=f'Línea de corte (Distancia={corte_sugerido})')
+
+# Anotaciones para guiar la lectura
+plt.annotate('Rama Huérfana\n(Outliers Globales)', xy=(1150, 16), xytext=(800, 22),
+             fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="b", lw=1, alpha=0.8))
+
+plt.annotate('Clústeres Normales', xy=(400, 10), xytext=(200, 20),
+             arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8),
+             fontsize=10, bbox=dict(boxstyle="round,pad=0.3", fc="lightgreen", ec="g", lw=1, alpha=0.8))
+
+plt.title("Detección de Anomalías mediante Dendrograma (Ward)")
+plt.ylabel("Distancia de Fusión (Varianza)")
+plt.xlabel("Puntos de Datos (Hojas)")
+plt.legend()
+plt.tight_layout()
+plt.show()
+```
+
+**Criterios de Ligamiento**
+
+La capacidad de un árbol jerárquico para aislar anomalías depende críticamente del criterio que define la distancia entre dos clústeres.
+
+* Ligado Sencillo: Define la distancia entre dos clústeres como la distancia mínima entre sus puntos más cercanos. Es el peor enfoque para datos ruidosos debido al fenómeno de "encadenamiento": Un outlier que actúe como un puente entre dos clústeres densos forcerá al algoritmo a fusionarlos prematuramente.
+* Ligado Completo: Toma la distancia entre los dos puntos más alejados de cada clúster. Sin embargo esto también un problema ya que un outlier alejado en un clúster hará que el algoritmo se niegue a unirlos, incluso si el la mayoría de de sus masas están juntas.
+* Promedio: Promedia todas las distancias punto a punto. Balanceado.
+* Ward: Mide la proximidad entre dos clústeres considerando el mínimo de la suma
+de la distancia al cuadrado de los elementos de cada clúster a su centroide.
+
+
+El ligado completo utiliza la distancia máxima, mientras que Ward busca minimizar el incremento en la varianza intra-clúster tras la fusión. Ambos son drásticamente superiores para la detección de anomalías, ya que obligan al algoritmo a formar clústeres esféricos y compactos, forzando a los outliers a permanecer marginados en ramas huérfanas durante casi todo el proceso aglomerativo.
+
+```{python}
+#| label: fig-comparativa-ligamientos
+#| fig-cap: "Comparativa de criterios de ligamiento. El 'Single Linkage' sufre de encadenamiento severo, haciendo imposible trazar un corte claro. Complete y Ward aíslan perfectamente las anomalías en ramas tardías."
+
+fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+
+metodos = ['single', 'complete', 'average', 'ward']
+titulos = [
+    'Ligado Sencillo (Mínima)\n[Sufre Encadenamiento]', 
+    'Ligado Completo (Máxima)\n[Clústeres Compactos]', 
+    'Ligado Promedio (Average)\n[Balanceado]', 
+    'Criterio de Ward\n[Minimiza Varianza]'
+]
+
+for i, metodo in enumerate(metodos):
+    ax = axes[i//2, i%2]
+    # Calcular ligamiento para cada método
+    Z = linkage(X_cont, method=metodo)
+    
+    # Generar el dendrograma en su respectivo subplot
+    dendrogram(Z, ax=ax, no_labels=True, color_threshold=0, above_threshold_color='steelblue')
+    
+    ax.set_title(titulos[i], fontsize=11)
+    ax.set_ylabel("Distancia")
+
+plt.tight_layout()
+plt.show()
+```
+
+### DBSCAN: Detección por densidad
+
+Hasta este punto, hemos demostrado cómo los algoritmos basados en particionamiento (K-Means, PAM) operan bajo una lógica de *distancia*. Sin embargo, asumen implícitamente que los clústeres tienen formas esféricas y densidades similares. En dominios reales (como veremos en nuestro caso de aplicación), los datos suelen presentar densidades heterogéneas, donde un grupo normal puede ser muy compacto y otro grupo normal muy disperso.
+
+Para superar esta barrera, introducimos un cambio de paradigma: la agrupación basada en densidad, cuyo máximo exponente es el algoritmo **DBSCAN (Density-Based Spatial Clustering of Applications with Noise)**.
+
+**Mecánica de la densidad**
+
+A diferencia de K-Means, DBSCAN no requiere que le indiquemos el número de clústeres $k$. En su lugar, el usuario debe definir empíricamente qué significa que un área sea "densa" utilizando dos hiperparámetros fundamentales:
+
+1.  $\epsilon$ (eps): El radio espacial que define la vecindad de un punto.
+2.  $MinPts$ (min_samples): La cantidad mínima de observaciones requeridas dentro del radio $\epsilon$ para considerar que esa región es densa.
+
+**Clasificación y Detección Directa de Anomalías**
+
+Con base en estos dos parámetros, DBSCAN escanea el espacio de características y clasifica estrictamente todos los puntos del conjunto de datos en tres categorías:
+
+* Puntos Centrales (Core Points): Aquellos que tienen al menos $MinPts$ vecinos en su radio $\epsilon$. Son el núcleo de un clúster normal.
+* Puntos Fronterizos (Border Points): Tienen menos de $MinPts$ vecinos, pero caen dentro del radio de un punto central. Pertenecen al clúster, formando sus bordes.
+* Puntos Ruido (Noise Points): Son observaciones marginadas. Tienen menos de $MinPts$ vecinos y no son alcanzables desde ningún punto central. 
+
+**¿Por qué lo introducimos?**
+Para la detección de anomalías, DBSCAN aísla las desviaciones directamente al asignarles una etiqueta de "ruido". Esto captura automáticamente los outliers globales y contextuales (ya que por naturaleza son poco densos), mientras que los outliers colectivos (que sí tienen una significativa densidad interna) pueden ser interceptados analizando los micro-clústeres que se formen con una masa total extremadamente baja. 
+
+De esta forma, el algoritmo DBSCAN resuelve las deficiencias del particionamiento evaluando la densidad local de los puntos en lugar de depender de sumas de distancias globales al cuadrado. Agrupa objetos que están muy juntos y separa las áreas dispersas considerándolas como anomalías, y a diferencia de algoritmos como K-Means o PAM, no requiere definir el número de grupos, lo que le permite encontrar clústeres de formas irregulares.
+
+## Caso de Aplicación: Detección de Fraude en E-commerce
+
+En los capítulos anteriores establecimos que los algoritmos de detección de anomalías son altamente útiles en entornos donde el desbalance de clases es extremo y la definición de "atípico" muta constantemente. El comercio electrónico (*e-commerce*) es un escenario ideal para ilustrar este fenómeno.
+
+### Planteamiento del Problema y Generación de Datos
+
+**La Problemática del Negocio**
+
+Una plataforma minorista en línea procesa miles de transacciones diarias. Ocasionalmente, la plataforma es blanco de ciberdelincuentes que realizan ataques de prueba de tarjetas (*card testing*), robo de cuentas (*account takeover*) o compras fraudulentas masivas. 
+
+Intentar predecir estos eventos con un modelo supervisado (como un Árbol de Decisión) requiere un historial etiquetado de fraudes previos. Sin embargo, como vimos con anterioridad, los auteres de estos frauden cambian sus métodos frecuentemente. Por lo tanto, abordaremos el problema desde la perspectiva del aprendizaje no supervisado: primero modelamos cómo se ve una "transacción legítima". Cualquier desviación geométrica de esta línea base será marcada como una anomalía.
+
+**Variables**
+
+En el siguiente dataset, se monitorean tres variables críticas en cada transacción:
+1. **`Monto_Compra`:** El valor monetario de la transacción (en pesos, MXN).
+2. **`Articulos_Carrito`:** La cantidad de ítems físicos en la orden.
+3. **`Hora_Operacion`:** La hora del día en la que se efectuó el pago (formato 24h, de 0 a 24). Esta variable actuará como nuestro atributo contextual.
+
+A continuación, se simulara el comportamiento histórico de nuestra tienda. La base de datos reflejará dos tipos de clientes: los "compradores casuales" (compras pequeñas y diurnas) y los "clientes mayoristas" (compras de alto volumen en horario de oficina).
+
+```{python}
+#| label: tbl-generacion-ecommerce
+#| tbl-cap: "Resumen estadístico de las transacciones legítimas que definen nuestro modelo de 'normalidad'."
+
+import numpy as np
+import pandas as pd
+
+# Fijar semilla para reproducibilidad de la simulación
+np.random.seed(42)
+
+# --- 1. Generación de Clientes Legítimos: "Comprador Casual" ---
+# Compran pocos artículos, gastan cantidades moderadas, operan de 9:00 a 22:00 hrs.
+n_casual = 800
+monto_casual = np.random.normal(loc=1200, scale=400, size=n_casual)
+articulos_casual = np.random.poisson(lam=3, size=n_casual)
+hora_casual = np.random.normal(loc=14, scale=2, size=n_casual) # Pico a las 2:00 PM
+
+# --- 2. Generación de Clientes Legítimos: "Cliente Mayorista (B2B)" ---
+# Compran muchos artículos, gastan mucho, operan estrictamente en horario de oficina (10:00 a 18:00)
+n_mayorista = 200
+monto_mayorista = np.random.normal(loc=50000, scale=20000, size=n_mayorista)
+articulos_mayorista = np.random.poisson(lam=45, size=n_mayorista)
+hora_mayorista = np.random.normal(loc=13, scale=2, size=n_mayorista) # Pico a la 1:00 PM
+
+# --- 3. Consolidación de la Línea Base Normal ---
+# Ensamblamos los arreglos asegurando que no haya valores ilógicos (negativos)
+monto = np.clip(np.concatenate([monto_casual, monto_mayorista]), 50, None)
+articulos = np.clip(np.concatenate([articulos_casual, articulos_mayorista]), 1, None)
+hora = np.clip(np.concatenate([hora_casual, hora_mayorista]), 0, 23.9)
+
+# Crear el DataFrame
+df_ecommerce = pd.DataFrame({
+    'Monto_Compra': monto,
+    'Articulos_Carrito': articulos,
+    'Hora_Operacion': hora,
+    'Etiqueta_Real': 'Normal'
+})
+
+print("--- LÍNEA BASE DE TRANSACCIONES LEGÍTIMAS (1,000 registros) ---")
+print(df_ecommerce[['Monto_Compra', 'Articulos_Carrito', 'Hora_Operacion']].describe().round(2))
+```
+
+### Visualización de la Taxonomía en el Dataset
+
+Para poner a prueba la robustez de los algoritmos de clustering y proximidad, inyectaremos tráfico malicioso en nuestra base de datos. Diseñaremos estos ataques basándonos estrictamente en la taxonomía de Chandola et al. que definimos analíticamente en la Sección 2:
+
+1.  **Outliers Globales (Fraude Masivo / Robo de Tarjeta):** Transacciones con montos exorbitantes (ej. $250,000$ MXN) y una cantidad irracional de artículos. Su magnitud es tan grande que se aislarán en cualquier proyección geométrica.
+2.  **Outliers Contextuales (Ataque Sofisticado):** Transacciones que imitan el monto y los artículos de un "Cliente Mayorista" legítimo (ej. $15,000$ MXN y 45 artículos), pero ejecutadas a las **3:00 a.m.** En el eje del monto son normales; en el eje del tiempo, son anomalías severas.
+3.  **Outliers Colectivos (Ataque de Bots / Card Testing):** Una ráfaga de 30 transacciones microscópicas (ej. $100$ MXN, 1 artículo) ejecutadas en un lapso de 5 minutos (ej. 4:15 a.m.). Individualmente, una compra de $100$ MXN no levanta sospechas, pero la topología del micro-clúster revela el ataque.
+
+A continuación, integramos estos vectores de fraude a nuestro conjunto de datos y generamos una proyección tridimensional de nuestro espacio de características.
+
+```{python}
+#| label: fig-ecommerce-3d
+#| fig-cap: "Proyección 3D de las transacciones. Observamos las densidades normales (azul) frente a las anomalías. Note cómo las anomalías contextuales (verde) tienen el mismo monto que los mayoristas, pero se separan en el eje temporal."
+
+import plotly.express as px
+
+# --- 1. Inyección de Anomalías ---
+# A) Globales (Valores extremos en todas las dimensiones)
+df_global = pd.DataFrame({
+    'Monto_Compra': [50000, 65000, 60000],
+    'Articulos_Carrito': [85, 95, 90],
+    'Hora_Operacion': [14.0, 15.5, 12.0],
+    'Etiqueta_Real': 'Outlier Global'
+})
+
+# B) Contextuales (Camufladas en Monto/Artículos, anómalas en Hora)
+df_contextual = pd.DataFrame({
+    'Monto_Compra': [14500, 15500, 15000, 14800],
+    'Articulos_Carrito': [42, 46, 44, 45],
+    'Hora_Operacion': [3.0, 3.2, 2.8, 2.5], # Madrugada
+    'Etiqueta_Real': 'Outlier Contextual'
+})
+
+# C) Colectivas (Ataque de Bots: Micro-transacciones coordinadas)
+# 30 transacciones idénticas en la misma ventana de tiempo
+df_colectivo = pd.DataFrame({
+    'Monto_Compra': np.random.normal(100, 5, 30),
+    'Articulos_Carrito': [1] * 30,
+    'Hora_Operacion': np.random.normal(4.25, 0.05, 30), # 4:15 AM
+    'Etiqueta_Real': 'Outlier Colectivo'
+})
+
+# Concatenamos el dataset legítimo (de la sección 5.1) con los fraudes
+df_fraude = pd.concat([df_ecommerce, df_global, df_contextual, df_colectivo], ignore_index=True)
+
+# --- 2. Visualización 3D Interactiva ---
+# Definimos una paleta de colores personalizada para destacar los tipos de datos
+color_map = {
+    'Normal': '#1f77b4',              # Azul tenue
+    'Outlier Global': '#d62728',      # Rojo
+    'Outlier Contextual': '#2ca02c',  # Verde
+    'Outlier Colectivo': '#ff7f0e'    # Naranja
+}
+
+fig = px.scatter_3d(
+    df_fraude, 
+    x='Monto_Compra', 
+    y='Hora_Operacion', 
+    z='Articulos_Carrito',
+    color='Etiqueta_Real',
+    color_discrete_map=color_map,
+    opacity=0.8,
+    title="Espacio de Características: Detección de Fraude E-commerce"
+)
+
+# Ajustes de diseño para presentación
+fig.update_traces(marker=dict(size=4, line=dict(width=0.5, color='DarkSlateGrey')))
+fig.update_layout(
+    margin=dict(l=0, r=0, b=0, t=40),
+    legend_title_text='Clasificación Real',
+    scene=dict(
+        xaxis_title='Monto ($ MXN)',
+        yaxis_title='Hora del Día (0-24h)',
+        zaxis_title='Artículos (Cant.)'
+    )
+)
+
+fig.show()
+```
+
+### 5.3. Implementación: Aislamiento Global y Colectivo con Clustering (Python)
+
+Para automatizar la detección de las anomalías visualizadas en el espacio tridimensional, recurriremos al algoritmo **DBSCAN**. La elección de un enfoque basado en densidad, en lugar de un particionamiento tradicional como K-Means, ya que el dataset presenta diferencia de densidad y masa de los clientes casuales con los mayoristas.
+
+Antes de calcular cualquier distancia, aplicaremos el escalamiento al dataset. Utilizaremos la estandarización ($Z$-score) para asegurar que el "Monto" (medido en miles) no domine sobre la "Hora" (medida de 0 a 24).
+
+El método de detección se basará en las propiedades de la salida de DBSCAN:
+
+* Aislamiento Puntual: Todo registro asignado al clúster `-1` (Outlier) se catalogará como Anomalía Global o Contextual.
+* Aislamiento Colectivo: Todo clúster cuyo tamaño represente menos del $5\%$ del total del dataset será catalogado como un Micro-clúster Anómalo (Ataque Colectivo).
+
+```{python}
+#| label: tbl-deteccion-dbscan
+#| tbl-cap: "Matriz de contingencia: Clasificación real de las transacciones frente a las asignaciones del modelo DBSCAN."
+
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import DBSCAN
+
+# 1. Extracción y Escalamiento Estricto de Características
+X_caracteristicas = df_fraude[['Monto_Compra', 'Articulos_Carrito', 'Hora_Operacion']]
+scaler = StandardScaler()
+X_escalado = scaler.fit_transform(X_caracteristicas)
+
+# 2. Configuración y Entrenamiento de DBSCAN
+# eps=0.6: Radio de vecindad (determinado empíricamente observando la varianza)
+# min_samples=10: Masa crítica para formar una región densa
+modelo_dbscan = DBSCAN(eps=0.7, min_samples=10)
+df_fraude['Cluster_DBSCAN'] = modelo_dbscan.fit_predict(X_escalado)
+
+# 3. Aplicación de la Heurística de Detección
+total_registros = len(df_fraude)
+umbral_microcluster = total_registros * 0.05  # 5% de los datos
+
+def clasificar_anomalia(cluster_id):
+    if cluster_id == -1:
+        return "Atípico" # Global y contextual
+    else:
+        # Calcular el tamaño del clúster actual
+        tamaño_cluster = (df_fraude['Cluster_DBSCAN'] == cluster_id).sum()
+        if tamaño_cluster < umbral_microcluster:
+            return "Atípico" # Colectivo
+        else:
+            return "Normal"
+
+# Mapeamos la función para crear nuestra predicción final
+df_fraude['Prediccion_Modelo'] = df_fraude['Cluster_DBSCAN'].apply(clasificar_anomalia)
+
+# 4. Generación de Tabla de Resultados (Crosstab)
+matriz_resultados = pd.crosstab(
+    index=df_fraude['Etiqueta_Real'], 
+    columns=df_fraude['Prediccion_Modelo'], 
+    margins=True, 
+    margins_name="Total"
+)
+
+print("--- EVALUACIÓN DEL MODELO DBSCAN ---")
+print(matriz_resultados)
+```
+
+### Análisis de Resultados
+
+Al analizar las asignaciones del modelo frente a las etiquetas reales, los resultados validan contundentemente la superioridad de la agrupación por densidad en escenarios de alta varianza:
+
+* Outliers Globales: Sus distancias y magnitudes extremas los marginaron naturalmente de cualquier región densa, siendo clasificados directamente como ruido.
+* Outliers Contextuales: A pesar de camuflarse con los montos de los "clientes mayoristas", la estandarización permitió que la variable `Hora_Operacion` rompiera la vecindad espacial. Al operar de madrugada, no alcanzaron el umbral $MinPts$ y fueron aislados exitosamente.
+* Outliers Colectivos: La ráfaga de compras atomatizadas y fradulentas formó una región densa que evadió ser clasificada como ruido. Sin embargo, al aplicar nuestra regla de negocio basada en el tamaño del clúster ($< 5\%$), la topología completa fue interceptada.
+
+El modelo clasificó 21 transacciones normales como atípicas (una tasa de falsos positivos del $2.1\%$). Geométricamente, estos puntos representan a clientes legítimos que operaron en los márgenes exteriores de las nubes de densidad (por ejemplo, un comprador casual que gastó un poco más de lo habitual o compró en horarios muy poco usuales). A pesar de esto, auditar temporalmente 21 transacciones legítimas para revisión manual es un costo operativo altamente aceptable si a cambio se garantiza una tasa de intercepción muy alta de fraudes.
+
+Por lo tanto, se ha expuesto que no es estrictamente necesario contar con un historial de fraudes para construir un sistema de detección robusto. Al modelar rigurosamente la "normalidad" a través de algoritmos de agrupación, es posible detectar la taxonomía completa de las anomalías de forma automatizada.
+
+## Conclusiones
+
+A lo largo de este notebook, hemos transitado desde la definición matemática de valor atípico hasta la implementación de un sistema de detección multidimensional. Hemos demostrado que las anomalías no son simples errores de medición, sino observaciones críticas que revelan intrusiones, fraudes o fallas sistémicas. 
+
+### Ventajas y Limitaciones de la Detección por Clustering
+
+Utilizar algoritmos no supervisados como K-Means, PAM o Clustering Jerárquico para la detección de outliers ofrece la ventaja fundamental de no requerir datos previamente etiquetados, permitiendo el descubrimiento de patrones anómalos emergentes.
+
+Sin embargo, el enfoque basado puramente en distancias globales y particionamiento presenta limitaciones matemáticas importantes:
+* Las funciones objetivo que minimizan errores cuadráticos (como SSE) son extremadamente vulnerables, permitiendo que un outlier arrastre los centroides y deforme las fronteras de decisión, generando falsos negativos.
+* Asumir que lo "normal" siempre forma esferas densas provoca que estos algoritmos fallen al modelar distribuciones heterogéneas, donde distintos grupos naturales presentan densidades muy diversas.
+
+### Detección Avanzada
+
+Para resolver el problema geométrico de las distancias globales, introdujimos la transición hacia la **agrupación por densidad (DBSCAN)**. Al evaluar si un punto pertenece a una región densa independientemente de su forma, logramos recuperar cada tipo de anomalías (globales, contextuales y colectivas).
+
+Sin embargo, existen otros modelos diseñados explícitamente para aislar la atípicos, tales como el *Local Outlier Factor (LOF)* y *One-Class SVM*, algoritmos que también son capaces de construir fronteras topológicas robustas en espacios de características de alta dimensión.
+
+
+### Preguntas de Reflexión
+1. Suponer que un dataset tiene millones de transacciones. Los algoritmos que miden la distancia de cada punto contra *todos* los demás se volverán lento, pues el tiempo de cálculo crece al cuadrado ($\mathcal{O}(n^2)$). ¿qué manera práctica existe para no comparar todo con todo?
+
+*Podemos utilizar muestreo (analizar solo una fracción representativa), calcular distancias solo contra un punto de referencia (como el centroide en K-Means), o delegar el problema a algoritmos más rápidos como Once-Class DVm.*
+
+2. En un modelo de negocio de retail ¿Qué es más preferible? ¿un modelo muy estricto que detenga algunas compras reales (FP), o un modelo relajado que deje pasar algunos fraudes (FN) para no molestar a los clientes?
+
+*Depende del costo del fraude vs. el costo de fricción. En transferencias bancarias o artículos de lujo, un fraude es devastador (se prefiere ser estricto). En micro-compras (ej. venta de música por \$15 pesos), molestar al cliente hace que se vaya con la competencia; es mejor asumir una pequeña pérdida por fraude.*
+
+3. Vimos que hacer una compra a las 3:00 a.m. se detecta como una anomalía contextual. Sin embargo, ¿qué pasaría con nuestro modelo si llega la temporada del "Buen Fin" o "Cyber Monday", donde miles de clientes legítimos compran de madrugada? ¿Cómo se evitarían que el algoritmo marque una gran cantidad de observaciones como outliers colectivos?
+
+*Entender que "normal" cambia. Las soluciones incluyen: re-entrenar el modelo con datos históricos de esas fechas específicas, agregar una nueva variable contextual (ej. `es_dia_festivo` o `es_promocion`), o darle más peso al comportamiento histórico individual del usuario en lugar de solo al promedio global.*
+
+---
+
+## Referencias Bibliográficas
+
+::: {#refs}
+:::

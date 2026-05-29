@@ -1,0 +1,54 @@
+\documentclass[11pt]{article}
+
+\input{estructura/packages} % Se agregan los paquetes utilizados en el documento.
+\input{estructura/estilo} % Define la marca de agua, encabezado y pie de página.
+
+
+\begin{document} % Inicia el Archivo.
+
+% Descomentar si se necesita agregar portada.
+% \input{estructura/portada}
+	
+% ----- Encabezado corto -----
+\begin{center}
+	\begin{minipage}{3cm}
+		\begin{center}
+			\includegraphics[height=2.4cm]{imagenes/Logo_UNAM.png}
+		\end{center}
+	\end{minipage}\hfill
+	\begin{minipage}{10cm}
+		\begin{center}
+			\textbf{Universidad Nacional Autónoma de México}\\[0.1cm]
+			\textbf{Facultad de Ciencias}\\[0.1cm]
+			\textbf{Almacenes y Minería de Datos}\\[0.1cm]
+			\textbf{Examen 4: Reporte Técnico}\\[0.1cm]
+			\textbf{Detección de Outliers I}\\[0.1cm]
+			Domínguez Sánchez Gustavo Alonso\\[0.1cm]
+			418047121\\[0.1cm]
+		\end{center}
+	\end{minipage}\hfill
+	\begin{minipage}{3cm}
+		\begin{center}
+			\includegraphics[height=2.7cm]{imagenes/Logo_FC.png}
+		\end{center}
+	\end{minipage}
+\end{center}
+
+\rule{17cm}{0.1mm}
+
+% ----- Fin de encabezado -----
+
+% Descomentar si se necesita agregar índice
+%\tableofcontents
+%\newpage
+
+\begin{spacing}{1.5}
+    \input{contenido/reporte}
+\end{spacing}
+
+\nocite{*}
+
+% \bibliographystyle{ACM-Reference-Format}
+% \bibliography{contenido/referencias.bib}
+
+\end{document}
